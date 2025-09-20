@@ -113,9 +113,9 @@ receive() external payable {
 6. **Loop** continues until bank empty
 7. **Final result**: Attacker gets 60 ETH, should only get 10 ET
 
-### 🛠️ Prevention: CEI Pattern
+### 🛠️ Prevention Strategies
 
-**CEI = Checks-Effects-Interactions**
+**CEI Pattern = Checks-Effects-Interactions**
 
 ```solidity
 function withdraw() public {
@@ -408,12 +408,6 @@ uniswap.swapExactTokensForTokens(
     deadline           // time limit
 );
 ```
-
-## Technologies Used
-
-- **Solidity ^0.8.24**
-- **Foundry** for testing and development
-- **OpenZeppelin** (recommended for production)
 
 ---
 
