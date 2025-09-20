@@ -2,28 +2,24 @@
 
 ## Overview
 
-This project demonstrates three critical blockchain security vulnerabilities through practical implementation and theoretical analysis. The main focus is a **reentrancy attack** simulation using a vulnerable banking contract, complemented by comprehensive test coverage. Additionally, it provides in-depth theoretical explanations of **oracle manipulation** and **slippage attacks**, complete with prevention strategies and visual diagrams to enhance understanding of these common DeFi exploitation vectors.
+This project demonstrates three critical blockchain security vulnerabilities through practical implementation and theoretical analysis. The main focus is a **reentrancy attack** simulation using a vulnerable banking contract, complemented by comprehensive test coverage. Furthermore, it provides in-depth theoretical explanations of **oracle manipulation** and **slippage attacks**, complete with prevention strategies and visual diagrams to enhance understanding of these common DeFi exploitation vectors.
 
 ## Reentrancy Attack
 
 ### What is a Reentrancy Attack?
 
-A **reentrancy attack** occurs when a malicious contract calls back into the vulnerable contract before the first function call is completed. This happens when:
+A **reentrancy attack** occurs when a function calls another contract, and that second contract gains control of the execution flow. The vulnerability lies in the fact that when we make an external call, **we transfer control to the receiving contract** before our original function completes.
 
-1. Contract A calls Contract B
-2. Contract B calls back into Contract A before the original call finishes
-3. Contract A's state hasn't been updated yet, allowing exploitation
+### Understanding the Vulnerability
 
-### The Vulnerability
-
-In our `SimpleBank` contract, the vulnerability exists in the `withdraw()` function:
+The key question is: **What happens when `msg.sender` is not an external wallet, but another smart contract?**
 
 ```solidity
 function withdraw() public {
     require(userBalance[msg.sender] >= 1 ether, "User has not enough balance");
     require(address(this).balance > 0, "Bank is rekt");
 
-    // 🚨 VULNERABLE: External call before state update
+    // 🚨 VULNERABLE: Control transfers to msg.sender (could be a contract)
     (bool success, ) = msg.sender.call{value: userBalance[msg.sender]}("");
     require(success, "Fail");
 
@@ -32,101 +28,147 @@ function withdraw() public {
 }
 ```
 
-### Attack Flow Diagram
+When `msg.sender` is a contract address, the ETH transfer **automatically triggers** the recipient contract's `receive()` function.
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌────────────────────┐
-│   SimpleBank    │    │    Attacker     │    │  Attack Flow       │
-│                 │    │                 │    │                    │
-│ Balance: 20 ETH │    │ Balance: 2 ETH  │    │ 1. Deposit 2ETH    │
-│ User: 20 ETH    │◄──►│                 │────┤ 2. Call withdraw   │
-│ Attacker: 0 ETH │    │                 │    │ 3. Receive hook    │
-└─────────────────┘    └─────────────────┘    │ 4. Re-call withdraw│
-                                              │ 5. Drain all funds │
-                       ┌─────────────────┐    └────────────────────┘
-                       │    Result       │
-                       │                 │
-                       │ Bank: 0 ETH     │
-                       │ Attacker: 22ETH │
-                       │ User: Lost 20ETH│
-                       └─────────────────┘
-```
+### The Attacker Contract Structure
 
-### Prevention Strategies
+The attacking contract has four key components:
 
-1. **Checks-Effects-Interactions Pattern**:
+1. **SimpleBank instance**: Set in constructor with target contract address
+2. **attack() function**: Entry point that deposits ETH and calls withdraw
+3. **receive() function**: **Special Solidity function** that auto-executes when receiving ETH
+4. **Malicious logic**: Inside `receive()` to call `withdraw()` again
+
+### The receive() Function
 
 ```solidity
-function withdraw() public {
-    // CHECK: Validate if allowed to withdraw
-    require(userBalance[msg.sender] >= 1 ether, "Insufficient balance");
-
-    // EFFECT: Update state FIRST
-    uint256 amount = userBalance[msg.sender];
-    userBalance[msg.sender] = 0;
-
-    // INTERACTION: External call LAST
-    (bool success, ) = msg.sender.call{value: amount}("");
-    require(success, "Transfer failed");
-}
-```
-
-2. **ReentrancyGuard Modifier**:
-
-```solidity
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-
-contract SimpleBank is ReentrancyGuard {
-    function withdraw() public nonReentrant {
-        // Function logic here
+receive() external payable {
+    if(address(simpleBank).balance >= 1 ether) {
+        simpleBank.withdraw();
     }
 }
 ```
 
-3. **Pull over Push Pattern**:
+**Why `receive()` and not `function`?**
+
+- `receive()` is a **reserved Solidity function**
+- Must be declared as `receive() external payable`
+- **Automatically invoked** when the contract receives ETH
+- No `function` keyword needed - it's built into the language
+
+### Attack Execution Flow
+
+1. **SimpleBank.withdraw()** executes requires
+2. **ETH transfer** to Attacker contract via `msg.sender.call`
+3. **Control transfers** to Attacker - `receive()` auto-executes
+4. **Attacker's receive()** calls `simpleBank.withdraw()` again
+5. But **Original withdraw()** hasn't reached user balance update yet
+6. **Loop continues** until bank is drained
+7. **Only then** update user balance `userBalance[msg.sender] = 0`
+
+### Attack Flow Diagram
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   SimpleBank    │    │    Attacker     │    │  Execution Flow │
+│                 │    │   Contract      │    │                 │
+│ Balance: 60 ETH │    │ Balance: 10 ETH │    │ 1. Deposit 10ETH│
+│ User: 50 ETH    │◄──►│                 │    │ 2. Call withdraw│
+│ Attacker: 10ETH │    │ receive() {     │    │ 3. receive()runs│
+│                 │    │   withdraw()    │    │ 4. Re-call loop │
+│ withdraw() {    │    │ }               │    │ 5. Drain funds  │
+│  ✅ requires    │    │                 │    │ 6. Update state │
+│  💸 send ETH    │──→ │                 │ ──┐└─────────────────┘
+│  🔄 LOOP        │    │                 │   │
+│  ❌ balance=0   │    │                 │   │
+│ }               │    │                 │   │
+└─────────────────┘    └─────────────────┘   │
+         ▲                       │           │
+         └───────────────────────┘───────────┘
+           Control flows back after receive()
+
+                       ┌─────────────────┐
+                       │    Result       │
+                       │                 │
+                       │ Bank: 0 ETH     │
+                       │ Attacker: 60ETH │
+                       │ User: Lost 50ETH│
+                       └─────────────────┘
+```
+
+### Detailed Attack Scenario
+
+**Setup:**
+
+- Deploy SimpleBank contract
+- Deploy Attacker contract with SimpleBank address
+- Legitimate user deposits 50 ETH
+- Attacker deposits only 10 ETH
+
+**Attack Execution:**
+
+1. Attacker calls `attack()` with 10 ETH (extra gas to avoid revert)
+2. Attacker's balance: 10 ETH, Bank total: 60 ETH
+3. `withdraw()` sends 10 ETH to Attacker
+4. `receive()` triggers, calls `withdraw()` again
+5. **Attacker's balance still shows 1 ETH** (not updated yet!)
+6. **Loop** continues until bank empty
+7. **Final result**: Attacker gets 60 ETH, should only get 10 ET
+
+### Prevention: CEI Pattern
+
+**CEI = Checks-Effects-Interactions**
 
 ```solidity
-mapping(address => uint256) public pendingWithdrawals;
-
 function withdraw() public {
-    pendingWithdrawals[msg.sender] = userBalance[msg.sender];
-    userBalance[msg.sender] = 0;
-}
+    // 1. CHECKS: Validate conditions
+    require(userBalance[msg.sender] >= 1 ether, "User has not enough balance");
+    require(address(this).balance > 0, "Bank is rekt");
 
-function claimWithdrawal() public {
-    uint256 amount = pendingWithdrawals[msg.sender];
-    pendingWithdrawals[msg.sender] = 0;
-    payable(msg.sender).transfer(amount);
+    // 2. EFFECTS: Update state FIRST
+    uint256 balance = userBalance[msg.sender];
+    userBalance[msg.sender] = 0;
+
+    // 3. INTERACTIONS: External calls LAST
+    (bool success, ) = msg.sender.call{value: balance}("");
+    require(success, "Fail");
 }
 ```
 
+**Why this works:**
+
+- When `receive()` calls `withdraw()` again
+- `userBalance[msg.sender]` is already 0
+- First require fails: "User has not enough balance"
+- Attack reverts
+
 ### Test Coverage
 
-The project includes comprehensive test coverage:
-
-- ✅ **Deposit functionality** with edge cases
-- ✅ **Withdraw functionality** with proper validation
-- ✅ **Attack simulation** that drains all funds
-- ✅ **Balance verification** before and after attack
-
-**Key Test: Attack Simulation**
+The project demonstrates this attack through comprehensive testing:
 
 ```solidity
 function test_attack() public {
-    // User deposits 20 ether
+    // Legitimate user deposits 20 ether
     vm.deal(user, 20 ether);
     vm.prank(user);
     simpleBank.deposit{value: 20 ether}();
 
-    // Attacker executes attack with 2 ether
+    // Attacker executes reentrancy attack with 2 ether
     vm.deal(address(attacker), 2 ether);
     vm.prank(address(attacker));
     attacker.attack{value: 2 ether}();
 
-    // Verify all funds drained
+    // Verify all funds drained: 22 ETH stolen with only 2 ETH deposit
     assert(simpleBank.totalBalance() == 0);
 }
 ```
+
+**Test Results:**
+
+- ✅ Legitimate deposits and withdrawals work
+- ✅ Attack successfully drains all funds
+- ✅ Attacker steals more than they deposited
+- ✅ Bank balance becomes zero
 
 ---
 
