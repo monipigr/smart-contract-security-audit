@@ -1,6 +1,6 @@
 # 🛡️ Blockchain Security Vulnerabilities Demo
 
-This project demonstrates three critical blockchain security vulnerabilities through practical implementation and theoretical analysis. The main focus is a **reentrancy attack** simulation using a vulnerable banking contract, complemented by comprehensive test coverage. Furthermore, it provides in-depth theoretical explanations of **oracle manipulation** and **slippage attacks**, complete with prevention strategies and visual diagrams to enhance understanding of these common DeFi exploitation vectors.
+This project demonstrates three critical blockchain security vulnerabilities through practical implementation and theoretical analysis. The main focus is a **reentrancy attack** simulation using a vulnerable banking contract, complemented by comprehensive test coverage. Additionally, it provides in-depth theoretical explanations of **oracle manipulation** and **slippage attacks** (including **front-running** and **sandwich attacks**), complete with prevention strategies and visual diagrams to enhance understanding of these common DeFi exploitation vectors.
 
 ## 🐛 Reentrancy Attack
 
