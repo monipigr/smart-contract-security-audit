@@ -1,10 +1,8 @@
-# Blockchain Security Vulnerabilities Demo
-
-## Overview
+# 🛡️ Blockchain Security Vulnerabilities Demo
 
 This project demonstrates three critical blockchain security vulnerabilities through practical implementation and theoretical analysis. The main focus is a **reentrancy attack** simulation using a vulnerable banking contract, complemented by comprehensive test coverage. Furthermore, it provides in-depth theoretical explanations of **oracle manipulation** and **slippage attacks**, complete with prevention strategies and visual diagrams to enhance understanding of these common DeFi exploitation vectors.
 
-## Reentrancy Attack
+## 🐛 Reentrancy Attack
 
 ### What is a Reentrancy Attack?
 
@@ -66,7 +64,7 @@ receive() external payable {
 6. **Loop continues** until bank is drained
 7. **Only then** update user balance `userBalance[msg.sender] = 0`
 
-### Attack Flow Diagram
+### 📊 Attack Flow Diagram
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -115,7 +113,7 @@ receive() external payable {
 6. **Loop** continues until bank empty
 7. **Final result**: Attacker gets 60 ETH, should only get 10 ET
 
-### Prevention: CEI Pattern
+### 🛠️ Prevention: CEI Pattern
 
 **CEI = Checks-Effects-Interactions**
 
@@ -142,7 +140,7 @@ function withdraw() public {
 - First require fails: "User has not enough balance"
 - Attack reverts
 
-### Test Coverage
+### 🧪 Test Coverage
 
 The project demonstrates this attack through comprehensive testing:
 
@@ -172,7 +170,7 @@ function test_attack() public {
 
 ---
 
-## Oracle Manipulation
+## 🎭 Oracle Manipulation
 
 ### What is an Oracle?
 
@@ -196,7 +194,7 @@ An **oracle** is a bridge between the real world and smart contracts. Smart cont
 2. **Malicious Actor**: Someone with control over the oracle acts in bad faith for personal gain
 3. **DEX Pool Manipulation**: Some applications use DEX pools (like Uniswap ETH/USDC) as price oracles
 
-### Attack Flow Diagram
+### 📊 Attack Flow Diagram
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -226,9 +224,53 @@ An **oracle** is a bridge between the real world and smart contracts. Smart cont
 
 This manipulation is temporary due to arbitrage, but can be devastating if it occurs during a critical transaction.
 
+### 🛠️ Prevention Strategies
+
+The fundamental problem with oracle manipulation is **relying on a single centralized entity**. This contradicts the core principle of decentralized applications - we shouldn't depend on a central actor who holds all the power.
+
+#### **Solution: Use Decentralized Oracles (Chainlink)**
+
+**Chainlink** solves the centralization problem through a **network of independent nodes**:
+
+```solidity
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
+contract PriceConsumer {
+    AggregatorV3Interface internal priceFeed;
+
+    constructor() {
+        // ETH/USD price feed on Ethereum mainnet
+        priceFeed = AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
+    }
+
+    // Chainlink oracle to get the current eth/usd price conversion
+    function getEtherPrice() public view returns (uint256) {
+        (, int256 price,,,) = IAggregator(dataFeedAddress).latestRoundData();
+        price = price * 1e10;
+        return uint256(price);
+    }
+}
+```
+
+#### **How Chainlink's Decentralized Network Works**
+
+- **Multiple Independent Nodes**: Instead of one oracle, Chainlink uses a network of nodes
+- **Multiple Data Sources**: Each node fetches price data from different external sources
+- **Consensus Mechanism**: All nodes report their findings, and outliers are filtered out
+- **Median Calculation**: Final price is calculated from consensus of honest nodes
+- **Economic Incentives**: Nodes earn LINK tokens for accurate reporting
+- **Slashing Mechanism**: Malicious or incorrect nodes are removed and lose their stake
+
+#### **Why This Prevents Manipulation**
+
+- **No Single Point of Failure**: One corrupted node cannot manipulate the entire network
+- **Economic Security**: Nodes have financial incentive to act honestly (earn LINK rewards)
+- **Reputation System**: Bad actors are identified and removed from the network
+- **Diverse Data Sources**: Multiple external sources make coordinated manipulation extremely difficult
+
 ---
 
-## Slippage Attack
+## ⚖️ Slippage Attack
 
 ### Understanding the Mempool
 
@@ -271,7 +313,7 @@ A **sandwich attack** combines two front-running attacks:
 3. **Back-run**: Restore price balance after your transaction
 4. **Your transaction is "sandwiched"** between two manipulated transactions
 
-### Attack Flow Diagram
+### 📊 Attack Flow Diagram
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -293,7 +335,7 @@ A **sandwich attack** combines two front-running attacks:
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### Prevention Strategies
+### 🛠️ Prevention Strategies
 
 The two main parameters to protect against slippage attacks:
 
@@ -372,12 +414,6 @@ uniswap.swapExactTokensForTokens(
 - **Solidity ^0.8.24**
 - **Foundry** for testing and development
 - **OpenZeppelin** (recommended for production)
-
-## Learning Resources
-
-- [Smart Contract Security Field Guide](https://scsfg.io/hackers//)
-- [DeFiHack Analysis](https://defihack.xyz/)
-- [Foundry Documentation](https://book.getfoundry.sh/)
 
 ---
 
